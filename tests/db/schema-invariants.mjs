@@ -12,6 +12,7 @@ const tables = [
   'users', 'students', 'teachers', 'concepts', 'concept_prerequisites',
   'questions', 'attempts', 'evidence_events', 'learner_state',
   'recommendations', 'teacher_overrides', 'audit_events',
+  'practice_sessions', 'subjects', 'topics', 'learning_content',
 ]
 
 assert.deepEqual(files, [
@@ -21,11 +22,11 @@ assert.deepEqual(files, [
   'create_teacher_overrides', 'create_audit_events', 'create_indexes_and_rls',
   'add_concept_graph_metadata',
   'phase3_assessment_schema', 'phase3_atomic_attempt_pipeline',
-  'phase4_decision_events',
+  'phase4_decision_events', 'phase6_practice_sessions', 'phase7_content_intelligence',
 ].map((name, index) => `${String(index + 1).padStart(3, '0')}_${name}.sql`))
 
 for (const table of tables) {
-  assert.match(sql, new RegExp(`create table public\\.${table} \\(`))
+  assert.match(sql, new RegExp(`create table (?:if not exists )?public\\.${table} \\(`))
   assert.match(sql, new RegExp(`alter table public\\.${table} enable row level security`))
 }
 
@@ -44,6 +45,10 @@ assert.match(sql, /create trigger recommendations_validate_evidence/)
 assert.match(sql, /create policy attempts_select_own/)
 assert.match(sql, /create policy learner_state_select_own/)
 assert.match(sql, /create policy recommendations_select_own/)
+assert.match(sql, /create policy practice_sessions_select_own/)
+assert.match(sql, /create policy subjects_select_authenticated/)
+assert.match(sql, /create policy topics_select_authenticated/)
+assert.match(sql, /create policy learning_content_select_authenticated/)
 assert.doesNotMatch(sql, /create policy .*teacher.*using \(true\)/i)
 assert.match(sql, /add column options jsonb/)
 assert.match(sql, /add column is_correct boolean/)
@@ -67,9 +72,11 @@ const textGuard = conceptMetadataMigration.indexOf("elsif difficulty_type = 'tex
 assert(numericGuard >= 0 && numericConversion > numericGuard && numericConversion < textGuard, 'Numeric difficulty conversion must remain inside the numeric-type branch')
 
 const attemptsRoute = fs.readFileSync(path.join(root, 'app/api/attempts/route.ts'), 'utf8')
+const attemptService = fs.readFileSync(path.join(root, 'lib/assessment/record-attempt.ts'), 'utf8')
 const questionRoute = fs.readFileSync(path.join(root, 'app/api/questions/[id]/route.ts'), 'utf8')
-assert.match(attemptsRoute, /isAnswerCorrect/)
-assert.match(attemptsRoute, /record_attempt_pipeline/)
+assert.match(attemptService, /isAnswerCorrect/)
+assert.match(attemptsRoute, /recordAttempt/)
+assert.match(attemptService, /record_attempt_pipeline/)
 assert.doesNotMatch(questionRoute, /correct_answer/)
 
 console.log(`Validated ${files.length} ordered migrations, ${tables.length} tables, RLS coverage, immutable-history triggers, and development seed safeguards.`)

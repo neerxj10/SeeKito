@@ -19,11 +19,14 @@ export function checkRemediation(context: DecisionContext) {
   const repeatedFailure = (state?.repeated_failure_count ?? 0) >= DECISION_THRESHOLDS.repeatedFailure
   const recentIncorrect = context.recentEvidence.filter((item) => item.evidence_type === 'INCORRECT' || item.evidence_type === 'REPEATED_FAILURE').length
   const recentSuccess = context.recentEvidence.filter((item) => item.evidence_type === 'CORRECT_INDEPENDENT' || item.evidence_type === 'CORRECT_WITH_HINT').length
-  const evidenceOutweighsSuccess = recentIncorrect > recentSuccess && recentIncorrect > 0
+  const lastSuccess = state?.last_success_at ? new Date(state.last_success_at).getTime() : null
+  const reviewCutoff = new Date(context.evaluatedAt ?? Date.now()).getTime() - DECISION_THRESHOLDS.reviewIntervalDays * 24 * 60 * 60 * 1000
+  const staleStrongConcept = mastery >= DECISION_THRESHOLDS.advanceMastery && lastSuccess !== null && lastSuccess < reviewCutoff
+  const evidenceOutweighsSuccess = recentIncorrect > recentSuccess && recentIncorrect > 0 && !staleStrongConcept
   return {
     matched: mastery < DECISION_THRESHOLDS.remediateMastery || repeatedFailure || evidenceOutweighsSuccess,
-    details: { masteryBelowThreshold: mastery < DECISION_THRESHOLDS.remediateMastery, repeatedFailure, evidenceOutweighsSuccess, recentIncorrect, recentSuccess },
-    trace: { rule: 'TARGET_REMEDIATION', matched: mastery < DECISION_THRESHOLDS.remediateMastery || repeatedFailure || evidenceOutweighsSuccess, details: { mastery, repeatedFailure, evidenceOutweighsSuccess } } satisfies RuleTrace,
+    details: { masteryBelowThreshold: mastery < DECISION_THRESHOLDS.remediateMastery, repeatedFailure, evidenceOutweighsSuccess, staleStrongConcept, recentIncorrect, recentSuccess },
+    trace: { rule: 'TARGET_REMEDIATION', matched: mastery < DECISION_THRESHOLDS.remediateMastery || repeatedFailure || evidenceOutweighsSuccess, details: { mastery, repeatedFailure, evidenceOutweighsSuccess, staleStrongConcept } } satisfies RuleTrace,
   }
 }
 
@@ -34,10 +37,11 @@ export function checkReview(context: DecisionContext, now = new Date(context.eva
   const lastSuccess = state?.last_success_at ? new Date(state.last_success_at).getTime() : null
   const reviewCutoff = now.getTime() - DECISION_THRESHOLDS.reviewIntervalDays * 24 * 60 * 60 * 1000
   const staleSuccess = lastSuccess !== null && lastSuccess < reviewCutoff
+  const scheduledReview = Boolean(state?.next_review_at && new Date(state.next_review_at).getTime() <= now.getTime())
   return {
-    matched: masteryWasSufficient && (lowConfidence || staleSuccess),
-    details: { masteryWasSufficient, lowConfidence, staleSuccess },
-    trace: { rule: 'TARGET_REVIEW', matched: masteryWasSufficient && (lowConfidence || staleSuccess), details: { masteryWasSufficient, lowConfidence, staleSuccess } } satisfies RuleTrace,
+    matched: masteryWasSufficient && (lowConfidence || staleSuccess || scheduledReview),
+    details: { masteryWasSufficient, lowConfidence, staleSuccess, staleStrongConcept: masteryWasSufficient && staleSuccess, scheduledReview },
+    trace: { rule: 'TARGET_REVIEW', matched: masteryWasSufficient && (lowConfidence || staleSuccess || scheduledReview), details: { masteryWasSufficient, lowConfidence, staleSuccess, scheduledReview } } satisfies RuleTrace,
   }
 }
 
@@ -53,4 +57,3 @@ export function checkPractice(context: DecisionContext) {
   const matched = mastery >= DECISION_THRESHOLDS.practiceMastery && mastery < DECISION_THRESHOLDS.advanceMastery
   return { matched, trace: { rule: 'TARGET_PRACTICE', matched, details: { mastery } } satisfies RuleTrace }
 }
-

@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAuthenticatedStudent } from '@/lib/supabase/server'
-import { isAnswerCorrect } from '@/lib/assessment/answers'
-import { processAttempt } from '@/lib/evidence/process-attempt'
-import { calculateLearnerState, evidenceDraftToJson } from '@/lib/learner-state/update'
-import type { Attempt, LearnerState, Question } from '@/types/database'
+import { recordAttempt } from '@/lib/assessment/record-attempt'
+import type { Attempt, Question } from '@/types/database'
 import { demoAttempts, demoSubmit, isDemoMode } from '@/lib/demo/store'
 
 const submissionSchema = z.object({
@@ -14,6 +12,7 @@ const submissionSchema = z.object({
   hintCount: z.number().int().min(0).max(10).default(0),
   responseTimeMs: z.number().int().min(0).max(86_400_000).nullable().default(null),
   startedAt: z.string().datetime().nullable().optional(),
+  attemptContext: z.enum(['diagnostic', 'practice', 'review', 'remediation']).default('practice'),
 })
 
 export async function POST(request: Request) {
@@ -33,37 +32,9 @@ export async function POST(request: Request) {
     const { data: rawQuestion, error: questionError } = await student.admin.from('questions').select('*').eq('id', body.data.questionId).eq('is_active', true).single()
     if (questionError || !rawQuestion) return NextResponse.json({ success: false, error: 'Question not found' }, { status: 404 })
     const question = rawQuestion as unknown as Question
-    const isCorrect = isAnswerCorrect(question.question_type, body.data.submittedAnswer, question.correct_answer)
     const usedHint = body.data.usedHint || body.data.hintCount > 0
-    const submittedAt = new Date().toISOString()
-    const startedAt = body.data.startedAt ?? submittedAt
-
-    const { data: recentRows, error: recentError } = await student.admin.from('attempts').select('id,concept_id,is_correct,used_hint,hint_count,response_time_ms,submitted_at').eq('student_id', student.student.id).eq('concept_id', question.concept_id).order('submitted_at', { ascending: false }).limit(10)
-    if (recentError) throw recentError
-    const recentAttempts = (recentRows ?? []) as unknown as Array<{ id: string; concept_id: string; is_correct: boolean; used_hint: boolean; hint_count: number; response_time_ms: number | null; submitted_at: string }>
-    const evidence = processAttempt({ concept_id: question.concept_id, is_correct: isCorrect, used_hint: usedHint, hint_count: body.data.hintCount, response_time_ms: body.data.responseTimeMs, submitted_at: submittedAt }, recentAttempts)
-
-    const { data: currentState, error: stateError } = await student.admin.from('learner_state').select('*').eq('student_id', student.student.id).eq('concept_id', question.concept_id).maybeSingle()
-    if (stateError) throw stateError
-    const attemptForState = { student_id: student.student.id, concept_id: question.concept_id, is_correct: isCorrect, hint_count: body.data.hintCount, submitted_at: submittedAt } as Pick<Attempt, 'student_id' | 'concept_id' | 'is_correct' | 'hint_count' | 'submitted_at'>
-    const nextState = calculateLearnerState(currentState as unknown as LearnerState | null, attemptForState, evidence.map((item) => ({ evidence_type: item.event_type })))
-    const { data: result, error: pipelineError } = await (student.admin as any).rpc('record_attempt_pipeline', {
-      p_student_id: student.student.id,
-      p_question_id: question.id,
-      p_concept_id: question.concept_id,
-      p_submitted_answer: body.data.submittedAnswer,
-      p_is_correct: isCorrect,
-      p_difficulty: question.difficulty,
-      p_used_hint: usedHint,
-      p_hint_count: body.data.hintCount,
-      p_response_time_ms: body.data.responseTimeMs,
-      p_started_at: startedAt,
-      p_submitted_at: submittedAt,
-      p_evidence_events: evidenceDraftToJson(evidence),
-      p_state: nextState,
-    })
-    if (pipelineError) throw pipelineError
-    return NextResponse.json({ success: true, attemptId: result.attempt_id, isCorrect, evidence: evidence.map((item) => item.event_type), result: { explanation: question.explanation, conceptId: question.concept_id, difficulty: question.difficulty, usedHint } })
+    const result = await recordAttempt({ admin: student.admin, studentId: student.student.id, question, submittedAnswer: body.data.submittedAnswer, usedHint, hintCount: body.data.hintCount, responseTimeMs: body.data.responseTimeMs, startedAt: body.data.startedAt ?? new Date().toISOString(), attemptContext: body.data.attemptContext })
+    return NextResponse.json({ success: true, attemptId: result.attemptId, isCorrect: result.isCorrect, evidence: result.evidence, result: { explanation: result.explanation, conceptId: question.concept_id, difficulty: result.difficulty, usedHint } })
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Unable to submit attempt' }, { status: 500 })
   }
@@ -71,7 +42,23 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    if (isDemoMode()) return NextResponse.json({ success: true, attempts: demoAttempts() })
+    if (isDemoMode()) {
+      // Keep demo responses identical to the production API contract. The demo
+      // store intentionally uses camelCase internally, while the UI consumes
+      // database-shaped snake_case fields.
+      return NextResponse.json({
+        success: true,
+        attempts: demoAttempts().map((attempt) => ({
+          id: attempt.id,
+          question_id: attempt.questionId,
+          concept_id: attempt.conceptId,
+          question: attempt.question,
+          is_correct: attempt.isCorrect,
+          used_hint: attempt.usedHint,
+          submitted_at: attempt.submittedAt,
+        })),
+      })
+    }
     const student = await getAuthenticatedStudent(request)
     if (!student) return NextResponse.json({ success: false, error: 'Student authentication required' }, { status: 401 })
     const { data: attempts, error } = await student.admin.from('attempts').select('id,student_id,question_id,concept_id,is_correct,difficulty,submitted_answer,response_time_ms,hint_count,used_hint,retry_number,started_at,submitted_at,created_at').eq('student_id', student.student.id).order('submitted_at', { ascending: false })

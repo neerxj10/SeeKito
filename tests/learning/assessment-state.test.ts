@@ -36,4 +36,20 @@ describe('assessment and learner state pipeline', () => {
     const high = calculateLearnerState({ ...failed, mastery_score: 95 } as any, baseAttempt, [{ evidence_type: 'CORRECT_INDEPENDENT' }])
     expect(high.mastery_score).toBe(100)
   })
+
+  it('schedules review and dampens rapid retries', () => {
+    const first = calculateLearnerState(null, baseAttempt, [{ evidence_type: 'CORRECT_INDEPENDENT' }], '2026-01-01T00:00:00.000Z')
+    const rapid = calculateLearnerState(first as any, { ...baseAttempt, submitted_at: '2026-01-01T00:00:10.000Z' }, [{ evidence_type: 'CORRECT_INDEPENDENT' }], '2026-01-01T00:00:10.000Z')
+    const spaced = calculateLearnerState(first as any, { ...baseAttempt, submitted_at: '2026-01-02T00:00:00.000Z' }, [{ evidence_type: 'CORRECT_INDEPENDENT' }], '2026-01-02T00:00:00.000Z')
+    expect(rapid.mastery_score).toBe(25)
+    expect(spaced.mastery_score).toBe(40)
+    expect(new Date(first.next_review_at as string).getTime()).toBeGreaterThan(new Date('2026-01-01T00:00:00.000Z').getTime())
+  })
+
+  it('keeps a hard transfer success from looking like several easy successes', () => {
+    const easy = calculateLearnerState(null, { ...baseAttempt, difficulty: 'EASY' }, [{ evidence_type: 'CORRECT_INDEPENDENT' }])
+    const hard = calculateLearnerState(null, { ...baseAttempt, difficulty: 'HARD' }, [{ evidence_type: 'CORRECT_INDEPENDENT' }])
+    expect(easy.mastery_score).toBeGreaterThan(hard.mastery_score)
+    expect(hard.mastery_score).toBe(10)
+  })
 })

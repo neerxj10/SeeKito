@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 
 type Question = { id: string; concept: { id: string; name: string }; question: string; options: string[]; difficulty: string; questionType: 'MCQ' | 'SHORT_ANSWER'; hintAvailable: boolean }
@@ -23,6 +24,8 @@ export default function AssessmentPage({ params }: { params: Promise<{ id: strin
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const isDiagnostic = searchParams.get('diagnostic') === '1'
 
   useEffect(() => {
     params.then(({ id }) => {
@@ -30,12 +33,26 @@ export default function AssessmentPage({ params }: { params: Promise<{ id: strin
       return fetch(`/api/questions?conceptId=${id}`)
     }).then((response) => response.json()).then((body) => {
       if (!body.success) throw new Error(body.error)
-      setQuestions(body.questions as Question[])
+      setQuestions((body.questions as Question[]).slice(0, isDiagnostic ? 5 : undefined))
     }).catch((reason) => setError(reason.message)).finally(() => setLoading(false))
   }, [params])
 
   const question = questions[index]
   const score = useMemo(() => Object.values(submissions).filter((submission) => submission.isCorrect).length, [submissions])
+
+  useEffect(() => {
+    if (!completed || !isDiagnostic) return
+    const saved = localStorage.getItem('seekito-onboarding-profile')
+    if (!saved) return
+    try {
+      const profile = JSON.parse(saved) as Record<string, unknown>
+      profile.diagnosticStatus = 'completed'
+      profile.diagnosticCompletedAt = new Date().toISOString()
+      localStorage.setItem('seekito-onboarding-profile', JSON.stringify(profile))
+    } catch {
+      // Preserve the assessment result even if an old local profile is invalid.
+    }
+  }, [completed, isDiagnostic])
 
   function resetQuestion(nextIndex: number) {
     setIndex(nextIndex)
@@ -60,7 +77,7 @@ export default function AssessmentPage({ params }: { params: Promise<{ id: strin
     if (!question || !answer || submitting) return
     setSubmitting(true)
     setError(null)
-    const response = await fetch('/api/attempts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ questionId: question.id, submittedAnswer: answer, usedHint: hintCount > 0, hintCount, responseTimeMs: Date.now() - startedAtMs, startedAt }) })
+    const response = await fetch('/api/attempts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ questionId: question.id, submittedAnswer: answer, usedHint: hintCount > 0, hintCount, responseTimeMs: Date.now() - startedAtMs, startedAt, attemptContext: isDiagnostic ? 'diagnostic' : 'practice' }) })
     const body = await response.json()
     if (!response.ok) { setError(body.error); setSubmitting(false); return }
     setSubmissions((current) => ({ ...current, [question.id]: body as Submission }))

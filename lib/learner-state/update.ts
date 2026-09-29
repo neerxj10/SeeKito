@@ -4,7 +4,7 @@ import type { EvidenceDraft } from '@/lib/evidence/process-attempt'
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value))
 
-export function calculateLearnerState(previous: LearnerState | null, attempt: Pick<Attempt, 'student_id' | 'concept_id' | 'is_correct' | 'hint_count' | 'submitted_at'>, evidence: Array<{ evidence_type: EvidenceType }>, now = attempt.submitted_at): Omit<LearnerState, 'id' | 'created_at' | 'updated_at'> {
+export function calculateLearnerState(previous: LearnerState | null, attempt: Pick<Attempt, 'student_id' | 'concept_id' | 'is_correct' | 'hint_count' | 'submitted_at'> & Partial<Pick<Attempt, 'difficulty'>>, evidence: Array<{ evidence_type: EvidenceType }>, now = attempt.submitted_at): Omit<LearnerState, 'id' | 'created_at' | 'updated_at'> {
   const previousState = previous ?? {
     student_id: attempt.student_id,
     concept_id: attempt.concept_id,
@@ -27,10 +27,14 @@ export function calculateLearnerState(previous: LearnerState | null, attempt: Pi
   } as LearnerState
 
   let mastery = previousState.mastery_score
+  const rapidRetry = previousState.last_attempt_at ? new Date(now).getTime() - new Date(previousState.last_attempt_at).getTime() < 30_000 : false
+  const independentGain = attempt.difficulty === 'HARD' ? 10 : attempt.difficulty === 'MEDIUM' ? 15 : 20
+  const hintedGain = attempt.difficulty === 'HARD' ? 5 : attempt.difficulty === 'MEDIUM' ? 8 : 10
+  const incorrectPenalty = attempt.difficulty === 'HARD' ? 20 : 15
   for (const item of evidence) {
-    if (item.evidence_type === 'CORRECT_INDEPENDENT') mastery += 20
-    if (item.evidence_type === 'CORRECT_WITH_HINT') mastery += 10
-    if (item.evidence_type === 'INCORRECT') mastery -= 15
+    if (item.evidence_type === 'CORRECT_INDEPENDENT') mastery += rapidRetry ? Math.max(2, Math.round(independentGain / 4)) : independentGain
+    if (item.evidence_type === 'CORRECT_WITH_HINT') mastery += rapidRetry ? Math.max(1, Math.round(hintedGain / 4)) : hintedGain
+    if (item.evidence_type === 'INCORRECT') mastery -= incorrectPenalty
     if (item.evidence_type === 'REPEATED_FAILURE') mastery -= 10
   }
 
@@ -40,8 +44,14 @@ export function calculateLearnerState(previous: LearnerState | null, attempt: Pi
   const independentSuccessCount = previousState.independent_success_count + (evidence.some((item) => item.evidence_type === 'CORRECT_INDEPENDENT') ? 1 : 0)
   const hintedSuccessCount = previousState.hinted_success_count + (evidence.some((item) => item.evidence_type === 'CORRECT_WITH_HINT') ? 1 : 0)
   const repeatedFailureCount = previousState.repeated_failure_count + (evidence.some((item) => item.evidence_type === 'REPEATED_FAILURE') ? 1 : 0)
-  const confidence = clamp(attemptCount * 10 + Math.max(0, independentSuccessCount - incorrectCount) * 5 - hintedSuccessCount * 2 - repeatedFailureCount * 5)
+  // A rapid retry is useful evidence of persistence, but not independent
+  // evidence of confidence. Exclude it from the confidence increment while
+  // still retaining the attempt in the audit trail and learner history.
+  const confidenceAttemptCount = rapidRetry ? Math.max(0, attemptCount - 1) : attemptCount
+  const confidence = clamp(confidenceAttemptCount * 10 + Math.max(0, independentSuccessCount - incorrectCount) * 5 - hintedSuccessCount * 2 - repeatedFailureCount * 5)
 
+  const reviewDays = !attempt.is_correct ? 0 : mastery >= 80 ? 14 : mastery >= 60 ? 7 : mastery >= 40 ? 3 : 1
+  const nextReview = new Date(new Date(now).getTime() + reviewDays * 24 * 60 * 60 * 1000).toISOString()
   return {
     student_id: attempt.student_id,
     concept_id: attempt.concept_id,
@@ -60,7 +70,7 @@ export function calculateLearnerState(previous: LearnerState | null, attempt: Pi
     incorrect_count: incorrectCount,
     repeated_failure_count: repeatedFailureCount,
     hint_usage_count: previousState.hint_usage_count + attempt.hint_count,
-    next_review_at: previousState.next_review_at,
+    next_review_at: nextReview,
   }
 }
 

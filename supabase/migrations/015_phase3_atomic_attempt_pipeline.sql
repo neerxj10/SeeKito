@@ -12,6 +12,7 @@ create or replace function public.record_attempt_pipeline(
   p_response_time_ms integer,
   p_started_at timestamptz,
   p_submitted_at timestamptz,
+  p_attempt_context text,
   p_evidence_events jsonb,
   p_state jsonb
 )
@@ -36,7 +37,7 @@ begin
   ) values (
     v_attempt_id, p_student_id, p_question_id, p_concept_id, p_submitted_answer,
     case when p_is_correct then 1 else 0 end, p_response_time_ms, p_hint_count,
-    v_retry_number, 'practice', p_is_correct, p_difficulty, p_used_hint,
+    v_retry_number, coalesce(p_attempt_context, 'practice'), p_is_correct, p_difficulty, p_used_hint,
     p_started_at, p_submitted_at
   );
 
@@ -54,7 +55,7 @@ begin
     independent_success_count, hinted_success_count, failure_count,
     recent_streak, last_attempt_at, last_success_at, state_version,
     attempt_count, correct_count, incorrect_count, repeated_failure_count,
-    hint_usage_count
+    hint_usage_count, next_review_at
   ) values (
     p_student_id, p_concept_id,
     (p_state->>'mastery_score')::numeric,
@@ -71,7 +72,8 @@ begin
     (p_state->>'correct_count')::integer,
     (p_state->>'incorrect_count')::integer,
     (p_state->>'repeated_failure_count')::integer,
-    (p_state->>'hint_usage_count')::integer
+    (p_state->>'hint_usage_count')::integer,
+    nullif(p_state->>'next_review_at', '')::timestamptz
   )
   on conflict (student_id, concept_id) do update set
     mastery_score = excluded.mastery_score,
@@ -88,6 +90,7 @@ begin
     incorrect_count = excluded.incorrect_count,
     repeated_failure_count = excluded.repeated_failure_count,
     hint_usage_count = excluded.hint_usage_count,
+    next_review_at = excluded.next_review_at,
     state_version = public.learner_state.state_version + 1,
     updated_at = now();
 
@@ -102,6 +105,5 @@ begin
 end;
 $$;
 
-revoke execute on function public.record_attempt_pipeline(uuid, uuid, uuid, jsonb, boolean, text, boolean, integer, integer, timestamptz, timestamptz, jsonb, jsonb) from public, anon, authenticated;
-grant execute on function public.record_attempt_pipeline(uuid, uuid, uuid, jsonb, boolean, text, boolean, integer, integer, timestamptz, timestamptz, jsonb, jsonb) to service_role;
-
+revoke execute on function public.record_attempt_pipeline(uuid, uuid, uuid, jsonb, boolean, text, boolean, integer, integer, timestamptz, timestamptz, text, jsonb, jsonb) from public, anon, authenticated;
+grant execute on function public.record_attempt_pipeline(uuid, uuid, uuid, jsonb, boolean, text, boolean, integer, integer, timestamptz, timestamptz, text, jsonb, jsonb) to service_role;

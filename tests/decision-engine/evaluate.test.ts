@@ -48,6 +48,23 @@ describe('deterministic decision engine', () => {
     expect(evaluateDecision(context({ learnerState: state('student', 'target', { mastery_score: 85, confidence_score: 45 }) })).decision).toBe('REVIEW')
   })
 
+  it('reviews a previously strong concept after a long-gap failure instead of treating it as first-time remediation', () => {
+    const result = evaluateDecision(context({
+      learnerState: state('student', 'target', { mastery_score: 85, confidence_score: 80, last_success_at: '2025-12-01T00:00:00.000Z' }),
+      recentEvidence: [{ evidence_type: 'INCORRECT', created_at: '2026-01-01T00:00:00.000Z' }],
+    }))
+    expect(result.decision).toBe('REVIEW')
+    expect(result.reasons.join(' ')).toMatch(/review|refresh|recent/i)
+  })
+
+  it('uses history, not only the latest mastery score, for two learners at the same score', () => {
+    const advance = evaluateDecision(context({ learnerState: state('student', 'target', { mastery_score: 85, confidence_score: 70, next_review_at: '2026-02-01T00:00:00.000Z' }) }))
+    const review = evaluateDecision(context({ learnerState: state('student', 'target', { mastery_score: 85, confidence_score: 70, next_review_at: '2025-12-15T00:00:00.000Z' }) }))
+    expect(advance.mastery).toBe(review.mastery)
+    expect(advance.decision).toBe('ADVANCE')
+    expect(review.decision).toBe('REVIEW')
+  })
+
   it('handles missing state, rejects invalid state, and fails on invalid graph', () => {
     expect(evaluateDecision(context({ learnerState: null })).decision).toBe('REMEDIATE')
     expect(() => evaluateDecision(context({ learnerState: state('student', 'target', { mastery_score: 101 }) }))).toThrow(DecisionEngineError)
@@ -60,4 +77,3 @@ describe('deterministic decision engine', () => {
     expect(evaluateDecision(input)).toEqual(evaluateDecision(input))
   })
 })
-

@@ -10,7 +10,7 @@ type NavItem = { href: string; label: string; icon: 'grid' | 'map' | 'chart' | '
 
 const navByRole: Record<Role, NavItem[]> = {
   teacher: [
-    { href: '/teacher', label: 'Overview', icon: 'grid' }, { href: '/teacher/students', label: 'Students', icon: 'users' }, { href: '/teacher/learner-states', label: 'Learner States', icon: 'brain' }, { href: '/teacher/overrides', label: 'Interventions', icon: 'siren' }, { href: '/teacher/insights', label: 'Decision History', icon: 'scroll' }, { href: '/teacher/analytics', label: 'Analytics', icon: 'chart' }, { href: '/teacher', label: 'Settings', icon: 'settings' },
+    { href: '/teacher', label: 'Overview', icon: 'grid' }, { href: '/teacher/students', label: 'Students', icon: 'users' }, { href: '/teacher/learner-states', label: 'Learner States', icon: 'brain' }, { href: '/teacher/overrides', label: 'Interventions', icon: 'siren' }, { href: '/teacher/insights', label: 'Decision History', icon: 'scroll' }, { href: '/teacher/analytics', label: 'Analytics', icon: 'chart' }, { href: '/teacher/simulation', label: 'Replay lab', icon: 'spark' }, { href: '/teacher', label: 'Settings', icon: 'settings' },
   ],
   admin: [
     { href: '/admin', label: 'Overview', icon: 'grid' }, { href: '/admin/users', label: 'Users', icon: 'history' }, { href: '/admin/students', label: 'Students', icon: 'history' }, { href: '/admin/teachers', label: 'Teachers', icon: 'history' }, { href: '/admin/concepts', label: 'Concepts', icon: 'map' }, { href: '/admin/system', label: 'System health', icon: 'chart' }, { href: '/admin/audit', label: 'Audit logs', icon: 'lock' },

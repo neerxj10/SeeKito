@@ -3,7 +3,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 
 export function SeekitoLogo({ compact = false }: { compact?: boolean }) {
-  return <span className={`seekito-logo ${compact ? 'is-compact' : ''}`}><span className="seekito-logo-orb">S</span>{!compact && <span>Seekito</span>}</span>
+  return <span className={`seekito-logo ${compact ? 'is-compact' : ''}`}><span className="seekito-logo-orb"><img className="seekito-brand-image logo-light" src="/brand/seekito-logo-light.jpeg" alt="" /><img className="seekito-brand-image logo-dark" src="/brand/seekito-logo-dark.jpeg" alt="" /></span>{!compact && <span>Seekito</span>}</span>
 }
 
 export function SeekitoMascot({ size = 'medium', label = 'Seekito AI guide' }: { size?: 'small' | 'medium' | 'large'; label?: string }) {
