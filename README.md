@@ -136,3 +136,19 @@ lib/ai/                      SeeKito AI prompts and safe fallbacks
 supabase/                    Migrations, schema, seed, and policies
 tests/                       Database invariants and unit tests
 ```
+
+## Team
+
+**Team:** KRANUS
+
+**Team Leader — M. Neeraj Koushik**<br>
+Email: neerajkoushik10@gmail.com<br>
+Phone: 9361936560
+
+### Team Members
+
+| Name | Email | Phone |
+| --- | --- | --- |
+| Umasri K | umasriiii12@gmail.com | 9345689741 |
+| Ashwath K G | ashwathkg.14@gmail.com | 8610731282 |
+| Sanjay Krishna K | sanjaykrishnak2007@gmail.com | 8056536297 |
