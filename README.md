@@ -1,68 +1,138 @@
-# Seekito database layer
+# SeeKito
 
-Phase 1 contains only the Supabase PostgreSQL foundation. It does not include UI, the deterministic decision engine, or OpenAI integration.
+SeeKito is an evidence-driven adaptive learning prototype. It helps each learner work on the right concept at the right time by combining concept dependencies, attempt evidence, learner mastery, and an explainable decision engine.
 
-Phase 2 adds the bounded Algebra concept graph, graph validation utilities, concept APIs, and the `/student/concepts` React Flow view. It does not implement mastery, evidence processing, recommendations, or AI content generation.
+> **Prototype status:** The repository supports a complete local jury demonstration in demo mode, plus a Supabase-backed production path.
 
-Phase 3 adds deterministic assessment submission, immutable attempts, evidence processing, persistent learner state, and the student practice/progress/history routes. It deliberately stops before recommendation or Decision Engine logic.
+## What problem does it solve?
 
-Phase 4 adds the pure deterministic Decision Engine, authenticated decision API, historical decision events, and `/student/decision/[conceptId]`. It evaluates a requested target concept only; it does not choose arbitrary next concepts or generate recommendations.
+Fixed learning sequences treat every student the same. SeeKito instead keeps a per-student, per-concept state and updates it after every response. It records correctness, hint usage, response time, retries, question difficulty, and review timing so recommendations are based on learning evidence rather than completion percentage alone.
 
-## Applying the database
+## Core capabilities
 
-Run the migrations with the Supabase CLI in filename order, then apply `supabase/seed.sql` only in a development project. The seed never creates `auth.users` records; it uses the first two existing Auth users when they exist.
+- **Onboarding:** captures learner name, grade, subject, selected concepts, goal, confidence, available practice time, and preferred support style.
+- **10-question diagnostic:** creates starting evidence without assuming that every learner starts at zero.
+- **Concept graph:** includes 10 concepts with prerequisite relationships across Algebra and Science.
+- **Learner state:** maintains mastery, confidence, attempt count, correct count, failure count, and evidence count per concept.
+- **Decision engine:** selects `Advance`, `Practice`, `Review`, `Remediate`, or `Blocked` based on mastery, confidence, recent evidence, review gaps, and prerequisites.
+- **Explainability:** displays the evidence and prerequisite reason behind each next action.
+- **Integrity controls:** hints, rapid retries, repeated failures, and response times affect evidence strength; repeated guessing does not inflate mastery like independent success.
+- **Spaced review:** strong concepts return after review intervals and can be flagged when evidence suggests uncertainty or forgetting.
+- **Teacher dashboard:** shows learner roster, mastery, uncertainty, recommendations, recent attempts, hints, retries, response time, decision history, and logged teacher overrides.
+- **SeeKito AI:** generates concept explanations, worked examples, memory ideas, common-mistake guidance, and student-selected timed quizzes with 10, 15, or 20 questions.
+- **Replay/comparison:** provides learner profiles and history differences so the same latest score can lead to different next actions.
 
-The local environment currently has no Supabase CLI or PostgreSQL client, so SQL execution against a live database is not available in this workspace.
+## Adaptive decision model
 
-## Phase 2 graph setup
+The prototype uses explainable weighted heuristics rather than an opaque model:
 
-Apply migration `013_add_concept_graph_metadata.sql`, then run `supabase/seed.sql` in development. The seed creates 10 Algebra concepts and 11 directed prerequisite relationships. Set `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for the server-side concept APIs. The service-role key must remain server-only.
+1. Check whether prerequisite concepts meet the required mastery threshold.
+2. Check for remediation signals: low mastery, repeated failures, or more recent errors than successes.
+3. Check whether a strong concept is stale, uncertain, or due for spaced review.
+4. Advance only when mastery and confidence are both strong.
+5. Otherwise select targeted practice and collect more evidence.
 
-Available routes:
+Decision priority:
 
-- `GET /api/concepts` returns the active Algebra graph.
-- `GET /api/concepts/[id]` returns one concept with direct prerequisites and dependents.
-- `/student/concepts` renders the graph and dynamically shows roots, leaves, and node details.
-- `/student/learn` is the learner workspace: it combines the real concept graph, prerequisite status, learner state, and the current Decision Engine result into one next-action view.
-- `/student/learn/[conceptId]` runs a five-question concept session. Questions are selected from active database content, answers are submitted through the atomic attempt pipeline, and the final screen requests a fresh Decision Engine result.
+```text
+Prerequisite block → Remediate → Review → Advance → Practice
+```
 
-## End-to-end learner loop
+The implementation is in `lib/decision-engine/`, with demo-state behavior in `lib/demo/store.ts`.
 
-The learner flow is intentionally server-authoritative:
+## Evidence captured
 
-1. Learn loads active concepts, prerequisite relationships, and the current learner state.
-2. Locked concepts link to the first unmet prerequisite; available concepts link to their own session.
-3. A session presents up to five active questions without exposing correct answers to the browser.
-4. A submitted answer is evaluated on the server and recorded through `record_attempt_pipeline`, which writes the immutable attempt, evidence events, and derived learner state together.
-5. After the final question, the UI requests the existing deterministic Decision Engine and links to its explainable decision history view.
+| Signal | Why it matters |
+| --- | --- |
+| Correctness | Measures demonstrated performance |
+| Hint count | Separates independent success from supported success |
+| Response time | Helps identify fluency and uncertainty |
+| Retry number | Prevents rapid repeated guesses from looking independent |
+| Difficulty | Keeps content difficulty separate from learner mastery |
+| Attempt context | Distinguishes diagnostic and practice evidence |
 
-The new UI does not create or infer backend records. If Supabase is not configured, the screens show the existing loading/error states and no fake learner statistics are rendered. For local development, configure the public URL, anon key, service-role key, and a real Supabase Auth student mapped to `public.users` and `public.students` before exercising the protected loop.
+These signals appear in the teacher workspace under **Recent learner attempts** and in the decision trace.
 
-## Phase 3 state model
+## Demo workflow
 
-The prototype mastery update is incremental and bounded:
+1. Open `/student/onboarding`.
+2. Enter a new learner name and profile details.
+3. Select a subject and concept.
+4. Click **Start quick check** and complete the 10-question diagnostic.
+5. Use a hint on one question, answer one incorrectly, and answer others independently to demonstrate different evidence signals.
+6. Open the student dashboard to show mastery and the next best action.
+7. Open `/teacher` to show the learner name and recent attempts with correctness, hints, retries, and response time.
+8. Open **Decision History** to show the evidence-to-recommendation trace.
+9. Open `/student/ai` to explain a concept or generate a timed quiz.
+10. Use the teacher **Intervention Desk** to override a recommendation and show the audit history.
 
-- Independent correct: `+20`
-- Correct with hint: `+10`
-- Incorrect: `-15`
-- Repeated failure: additional `-10`
+Starting onboarding with a new learner resets the local demo learner state. The sidebar **Reset demo** action restores seeded comparison data for the jury walkthrough.
 
-Mastery is clamped to `0–100`. Confidence is computed independently from attempt quantity, independent-success consistency, hinted-success penalty, and repeated-failure penalty, then clamped to `0–100`. These are deterministic prototype heuristics, not a validated psychometric model.
+## Data storage
 
-Attempt submission uses the server-only `record_attempt_pipeline` RPC so attempt, evidence, and learner-state persistence commit as one database operation. Students cannot directly insert attempts or mutate derived records through RLS.
+When `SEEKITO_DEMO_MODE=true`, demo attempts, learner state, practice sessions, and overrides are stored in memory in `lib/demo/store.ts`. This is ideal for a local presentation and resets when the demo is reset or the server restarts.
 
-## Security boundary
+The Supabase-backed path persists the corresponding records in:
 
-Students can read their own learner-facing records and submit attempts for themselves. Questions are intentionally not exposed through a broad client-side SELECT policy because the table contains `correct_answer`; trusted server-side code should return only the prompt/content needed by the student. Students cannot write evidence, learner state, recommendations, overrides, or audit events. Historical attempts, evidence, recommendations, and audit events are protected by both RLS and database triggers.
+- `attempts`
+- `evidence_events`
+- `learner_state`
+- `decision_events`
+- `teacher_overrides`
+- `practice_sessions`
 
-Phase 1 intentionally has no teacher-to-student assignment table. Consequently, teachers have no broad client-side read policy. Trusted server-side operations using the Supabase service role must perform derived-state writes and any teacher data access until an assignment model is added.
+The server-side attempt pipeline keeps attempt history and derived learner state consistent. Correct answers remain server-only in the database path.
+
+## SeeKito AI configuration
+
+Add the key to `.env.local` on the server side:
+
+```env
+OPENAI_API_KEY=your_key_here
+OPENAI_MODEL=gpt-4o-mini
+```
+
+AI is used for educational content generation and explanations. It does not replace the deterministic mastery state or decision engine. Without a key, bounded demo content keeps the prototype demonstrable.
+
+## Local setup
+
+```sh
+npm install
+npm run dev
+```
+
+Useful routes:
+
+- `/student/onboarding` — learner setup and diagnostic entry
+- `/student` — learner dashboard
+- `/student/concepts` — prerequisite concept map
+- `/student/ai` — SeeKito AI explanations and quiz generation
+- `/student/history` — attempt evidence history
+- `/teacher` — teacher overview and recent learner attempts
+- `/teacher/insights` — explainable decision trace
+- `/teacher/overrides` — auditable recommendation override
+- `/teacher/simulation` — learner comparison/replay
 
 ## Validation
 
-Run:
-
 ```sh
-npm run test:db
+npm run lint
+npm test
+npm run build
 ```
 
-This performs dependency-free static checks for migration ordering, table coverage, key invariants, RLS coverage, historical immutability, recommendation evidence validation, and seed safety. Full constraint and RLS behavior tests require a configured Supabase test project.
+The prototype has passing TypeScript validation, database invariant checks, automated tests, and a production build.
+
+## Project structure
+
+```text
+app/                         Next.js pages and route handlers
+components/                  Shared learner, teacher, and AI UI
+lib/decision-engine/         Explainable recommendation rules
+lib/evidence/                Attempt classification and evidence logic
+lib/learner-state/           Mastery and confidence updates
+lib/demo/store.ts            Local jury-demo state and seed data
+lib/ai/                      SeeKito AI prompts and safe fallbacks
+supabase/                    Migrations, schema, seed, and policies
+tests/                       Database invariants and unit tests
+```
