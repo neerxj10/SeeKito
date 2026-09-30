@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const parsed = schema.safeParse(await request.json())
     if (!parsed.success) return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 400 })
     if (isDemoMode()) {
-      const result = demoSubmitPractice(parsed.data.sessionId, parsed.data.questionId, String(parsed.data.answer), parsed.data.usedHint || parsed.data.hintCount > 0)
+      const result = demoSubmitPractice(parsed.data.sessionId, parsed.data.questionId, String(parsed.data.answer), parsed.data.usedHint || parsed.data.hintCount > 0, parsed.data.hintCount, parsed.data.responseTimeMs)
       if ('error' in result) { const message = result.error ?? 'Unable to submit answer'; return NextResponse.json({ success: false, error: message }, { status: message.includes('not found') ? 404 : 409 }) }
       const session = result.session
       let next = null

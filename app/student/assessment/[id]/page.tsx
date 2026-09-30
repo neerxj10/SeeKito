@@ -33,7 +33,7 @@ export default function AssessmentPage({ params }: { params: Promise<{ id: strin
       return fetch(`/api/questions?conceptId=${id}`)
     }).then((response) => response.json()).then((body) => {
       if (!body.success) throw new Error(body.error)
-      setQuestions((body.questions as Question[]).slice(0, isDiagnostic ? 5 : undefined))
+      setQuestions((body.questions as Question[]).slice(0, isDiagnostic ? 10 : undefined))
     }).catch((reason) => setError(reason.message)).finally(() => setLoading(false))
   }, [params])
 
@@ -80,6 +80,7 @@ export default function AssessmentPage({ params }: { params: Promise<{ id: strin
     const response = await fetch('/api/attempts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ questionId: question.id, submittedAnswer: answer, usedHint: hintCount > 0, hintCount, responseTimeMs: Date.now() - startedAtMs, startedAt, attemptContext: isDiagnostic ? 'diagnostic' : 'practice' }) })
     const body = await response.json()
     if (!response.ok) { setError(body.error); setSubmitting(false); return }
+    window.dispatchEvent(new Event('seekito-evidence-updated'))
     setSubmissions((current) => ({ ...current, [question.id]: body as Submission }))
     if (index === questions.length - 1) {
       setCompleted(true)

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { SeekitoLogo } from '@/components/seekito/SeekitoUI'
 
 type Concept = { id: string; name: string; description?: string; difficulty?: string; estimated_minutes?: number; subject: 'ALGEBRA' | 'SCIENCE' }
 type Subject = 'ALGEBRA' | 'SCIENCE'
@@ -18,7 +19,7 @@ export default function StudentOnboardingPage() {
   const [subject, setSubject] = useState<Subject>('ALGEBRA')
   const [selected, setSelected] = useState<string[]>([])
   const [goal, setGoal] = useState('Build strong foundations')
-  const [level, setLevel] = useState('Grade 9')
+  const [level, setLevel] = useState('')
   const [confidence, setConfidence] = useState('Somewhat confident')
   const [practiceTime, setPracticeTime] = useState('20 minutes a day')
   const [helpStyle, setHelpStyle] = useState('Worked examples')
@@ -48,7 +49,7 @@ export default function StudentOnboardingPage() {
       if (!body.success) throw new Error(body.error)
       const available = body.concepts as Concept[]
       setConcepts(available)
-      setSelected((current) => current.length ? current : available.filter((concept) => concept.subject === 'ALGEBRA').map((concept) => concept.name))
+      setSelected([])
     }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to load learning topics'))
   }, [])
 
@@ -58,7 +59,7 @@ export default function StudentOnboardingPage() {
 
   function chooseSubject(nextSubject: Subject) {
     setSubject(nextSubject)
-    setSelected(concepts.filter((concept) => concept.subject === nextSubject).map((concept) => concept.name))
+    setSelected([])
   }
 
   function toggleTopic(name: string) {
@@ -71,29 +72,37 @@ export default function StudentOnboardingPage() {
     localStorage.setItem('seekito-onboarding-profile', JSON.stringify(profile))
     sessionStorage.setItem('seekito-onboarding', JSON.stringify(profile))
     if (fullName.trim()) {
-      localStorage.setItem('seekito-profile', JSON.stringify({ fullName: fullName.trim() }))
+      localStorage.setItem('seekito-profile', JSON.stringify({ name: fullName.trim(), fullName: fullName.trim() }))
       window.dispatchEvent(new Event('seekito-profile-updated'))
     }
     return ids
   }
 
-  function saveAndStartDiagnostic() {
+  async function startNewLearner() {
+    if (process.env.NEXT_PUBLIC_SEEKITO_DEMO_MODE !== 'false') {
+      await fetch('/api/demo/reset', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ seed: false }) })
+    }
+  }
+
+  async function saveAndStartDiagnostic() {
+    await startNewLearner()
     const ids = saveProfile('pending')
     if (ids.length) window.location.href = `/student/assessment/${ids[0]}?diagnostic=1`
   }
 
-  function skipDiagnostic() {
+  async function skipDiagnostic() {
+    await startNewLearner()
     saveProfile('skipped')
     window.location.href = '/student'
   }
 
   return <main className="onboarding-page">
-    <Link href="/student" className="onboarding-brand"><span>S</span>SeeKito</Link>
+    <Link href="/student" className="onboarding-brand"><SeekitoLogo /></Link>
     <section className="onboarding-card">
       <div className="onboarding-progress"><div>{[1, 2, 3, 4, 5].map((item) => <span key={item} className={step >= item ? 'is-active' : ''} />)}</div><strong>Step {step} of 5</strong></div>
       {error && <div className="inline-error">{error}</div>}
 
-      {step === 1 && <div className="onboarding-content"><p className="eyebrow">STEP 1 · ABOUT YOU</p><h1>Let&apos;s shape your learning path.</h1><p className="onboarding-lead">Tell us a little about your starting point. There are no wrong answers, and you can change these choices later.</p><label className="onboarding-field">What should we call you?<input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your name" /></label><label className="onboarding-field">What level are you studying?<select value={level} onChange={(event) => setLevel(event.target.value)}><option>Grade 8</option><option>Grade 9</option><option>Grade 10</option><option>Grade 11</option><option>Grade 12</option></select></label><div className="onboarding-actions"><span /><button className="primary-button" onClick={() => setStep(2)}>Continue <span>→</span></button></div></div>}
+      {step === 1 && <div className="onboarding-content"><p className="eyebrow">STEP 1 · ABOUT YOU</p><h1>Let&apos;s shape your learning path.</h1><p className="onboarding-lead">Tell us a little about your starting point. There are no wrong answers, and you can change these choices later.</p><label className="onboarding-field">What should we call you?<input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Your name" /></label><label className="onboarding-field">What level are you studying?<select value={level} onChange={(event) => setLevel(event.target.value)}><option value="" disabled>Select your grade</option><option>Grade 8</option><option>Grade 9</option><option>Grade 10</option><option>Grade 11</option><option>Grade 12</option></select></label><div className="onboarding-actions"><span /><button className="primary-button" disabled={!level} onClick={() => setStep(2)}>Continue <span>→</span></button></div></div>}
 
       {step === 2 && <div className="onboarding-content"><p className="eyebrow">STEP 2 · SUBJECT AND TOPICS</p><h1>Where would you like to begin?</h1><p className="onboarding-lead">Choose a subject, then select one or more topics. Seekito will use these choices to shape your learning path.</p><div className="subject-options">{subjectOptions.map((option) => <button key={option.id} type="button" className={subject === option.id ? 'subject-card is-selected' : 'subject-card'} onClick={() => chooseSubject(option.id)}><span className="subject-icon">{option.icon}</span><span><strong>{option.label}</strong><small>{option.description}</small></span><b>{subject === option.id ? 'Selected' : 'Choose'}</b></button>)}</div><p className="onboarding-label">TOPICS TO INCLUDE · {activeSubject.label.toUpperCase()}</p><div className="topic-grid">{subjectConcepts.map((concept) => <button key={concept.id} type="button" className={selected.includes(concept.name) ? 'topic-chip is-selected' : 'topic-chip'} onClick={() => toggleTopic(concept.name)}><span>{selected.includes(concept.name) ? '✓' : '+'}</span>{concept.name}<small>Include</small></button>)}</div><div className="onboarding-note">ⓘ You can start with one subject and add another later.</div><div className="onboarding-actions"><button className="secondary-button" onClick={() => setStep(1)}>Back</button><button className="primary-button" disabled={!selected.length} onClick={() => setStep(3)}>Continue <span>→</span></button></div></div>}
 

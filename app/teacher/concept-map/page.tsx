@@ -1,2 +1,5 @@
-import { RoleDataPage } from '@/components/layout/RoleDataPage'
-export default function TeacherConceptMapPage() { return <RoleDataPage role="teacher" title="Concept map" description="Class-level prerequisite mastery will appear here without changing the shared concept graph logic." /> }
+'use client'
+import { useEffect, useState } from 'react'
+import { RoleShell } from '@/components/layout/RoleShell'
+type Workspace = { concepts: Array<{ id: string; name: string; subject: string; mastery: number; decision: string; blockers: Array<{ conceptName: string }> }> }
+export default function TeacherConceptMapPage() { const [workspace, setWorkspace] = useState<Workspace | null>(null); useEffect(() => { fetch('/api/teacher/workspace').then((response) => response.json()).then((body) => setWorkspace(body.workspace ?? null)) }, []); return <RoleShell role="teacher" eyebrow="Teacher console" title="Concept map" description="See how prerequisite relationships affect readiness across the class learning path."><div className="teacher-demo-page"><section className="teacher-proof-card"><p className="eyebrow">PREREQUISITE GRAPH</p><h2>Class readiness by concept</h2><div className="role-cards">{workspace?.concepts.map((concept) => <article className="role-card" key={concept.id}><span className="role-card-kicker">{concept.subject} · {concept.decision}</span><strong>{concept.name}</strong><span>{concept.mastery}% mastery{concept.blockers.length ? ` · blocked by ${concept.blockers[0].conceptName}` : ' · ready to progress'}</span></article>)}</div></section></div></RoleShell> }

@@ -11,7 +11,7 @@ const questionSchema = z.object({
   difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']),
 })
 
-const questionSetSchema = z.object({ questions: z.array(questionSchema).min(1).max(10) })
+const questionSetSchema = z.object({ questions: z.array(questionSchema).min(1).max(20) })
 export type SeekitoQuestion = z.infer<typeof questionSchema>
 
 export type SeekitoExplanation = {
@@ -56,8 +56,10 @@ export async function explainConcept(input: AIContext): Promise<SeekitoExplanati
 }
 
 export async function generateQuestions(input: AIContext & { count?: number; difficulty?: string; timeMinutes?: number }): Promise<{ questions: SeekitoQuestion[]; source: 'AI' | 'DEMO' }> {
-  const fallback = demoQuestions.filter((question) => question.concept_id === input.conceptId).slice(0, input.count ?? 5).map((question) => ({ question: question.question, options: question.options, correctAnswer: question.correctAnswer, explanation: question.explanation, hint: question.hint, difficulty: question.difficulty as 'EASY' | 'MEDIUM' | 'HARD' }))
-  const result = await askModel(`Generate ${input.count ?? 5} original multiple-choice questions about "${input.conceptName}" for a ${input.learnerLevel ?? 'secondary school'} learner. Description: ${input.description ?? 'not provided'}. Target difficulty: ${input.difficulty ?? 'mixed'}. Mastery: ${input.mastery ?? 0}%. Build a focused quiz designed to fit within ${input.timeMinutes ?? 10} minutes, with a mix of recall and one transfer question. Return JSON: {"questions":[{"question":string,"options":[string,string,string,string],"correctAnswer":string,"explanation":string,"hint":string,"difficulty":"EASY"|"MEDIUM"|"HARD"}]}. The correctAnswer must exactly match one option.`)
+  const pool = demoQuestions.filter((question) => question.concept_id === input.conceptId)
+  const requestedCount = [10, 15, 20].includes(input.count ?? 10) ? input.count ?? 10 : 10
+  const fallback = Array.from({ length: requestedCount }, (_, index) => pool[index % Math.max(pool.length, 1)]).filter(Boolean).map((question) => ({ question: question.question, options: question.options, correctAnswer: question.correctAnswer, explanation: question.explanation, hint: question.hint, difficulty: question.difficulty as 'EASY' | 'MEDIUM' | 'HARD' }))
+  const result = await askModel(`Generate ${input.count ?? 10} original multiple-choice questions about "${input.conceptName}" for a ${input.learnerLevel ?? 'secondary school'} learner. Description: ${input.description ?? 'not provided'}. Target difficulty: ${input.difficulty ?? 'mixed'}. Mastery: ${input.mastery ?? 0}%. Build a focused quiz designed to fit within ${input.timeMinutes ?? 10} minutes, with a mix of recall and one transfer question. Return JSON: {"questions":[{"question":string,"options":[string,string,string,string],"correctAnswer":string,"explanation":string,"hint":string,"difficulty":"EASY"|"MEDIUM"|"HARD"}]}. The correctAnswer must exactly match one option.`)
   if (!result) return { questions: fallback, source: 'DEMO' }
   const parsed = questionSetSchema.safeParse(result)
   if (!parsed.success) return { questions: fallback, source: 'DEMO' }

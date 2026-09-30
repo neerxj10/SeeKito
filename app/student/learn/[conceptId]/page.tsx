@@ -78,6 +78,7 @@ export default function ConceptLearningPage() {
     const body = await response.json()
     setSubmitting(false)
     if (!response.ok) return setError(body.error ?? 'Unable to record answer')
+    window.dispatchEvent(new Event('seekito-evidence-updated'))
     setResult(body as Result)
     setCaptured((value) => value + 1)
   }

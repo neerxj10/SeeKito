@@ -19,7 +19,7 @@ function summarize(concepts: Array<{ id: string; name: string; subject?: string 
     totalAttempts: attempts.length,
     completedConcepts: states.filter((state) => Number(state.mastery_score) >= 80).length,
     subjectMastery: [...groups.entries()].map(([subject, group]) => ({ subject, mastery: group.mastery.length ? Math.round(group.mastery.reduce((sum, value) => sum + value, 0) / group.mastery.length) : 0, attempts: group.attempts, accuracy: group.attempts ? Math.round((group.correct / group.attempts) * 100) : 0 })),
-    conceptMastery: concepts.map((concept) => ({ ...concept, mastery: Number(stateById.get(concept.id)?.mastery_score ?? 0), attempts: Number(stateById.get(concept.id)?.attempt_count ?? 0), accuracy: Number(stateById.get(concept.id)?.attempt_count ?? 0) ? Math.round((Number(stateById.get(concept.id)?.correct_count ?? 0) / Number(stateById.get(concept.id)?.attempt_count ?? 1)) * 100) : 0 })),
+    conceptMastery: concepts.map((concept) => ({ ...concept, conceptId: concept.id, mastery: Number(stateById.get(concept.id)?.mastery_score ?? 0), attempts: Number(stateById.get(concept.id)?.attempt_count ?? 0), accuracy: Number(stateById.get(concept.id)?.attempt_count ?? 0) ? Math.round((Number(stateById.get(concept.id)?.correct_count ?? 0) / Number(stateById.get(concept.id)?.attempt_count ?? 1)) * 100) : 0 })),
     recentActivity: activity,
   }
 }

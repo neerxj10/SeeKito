@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     if (isDemoMode()) {
       const demoBody = submissionSchema.safeParse(await request.json())
       if (!demoBody.success) return NextResponse.json({ success: false, error: demoBody.error.flatten() }, { status: 400 })
-      const submission = demoSubmit(demoBody.data.questionId, String(demoBody.data.submittedAnswer), demoBody.data.usedHint || demoBody.data.hintCount > 0)
+      const submission = demoSubmit(demoBody.data.questionId, String(demoBody.data.submittedAnswer), demoBody.data.usedHint || demoBody.data.hintCount > 0, demoBody.data.hintCount, demoBody.data.responseTimeMs)
       if (!submission) return NextResponse.json({ success: false, error: 'Question not found' }, { status: 404 })
       return NextResponse.json({ success: true, attemptId: submission.id, isCorrect: submission.isCorrect, evidence: [submission.isCorrect ? 'CORRECT_INDEPENDENT' : 'INCORRECT'], result: { explanation: submission.question.explanation, conceptId: submission.question.concept_id, difficulty: submission.question.difficulty, usedHint: demoBody.data.usedHint } })
     }
@@ -55,6 +55,9 @@ export async function GET(request: Request) {
           question: attempt.question,
           is_correct: attempt.isCorrect,
           used_hint: attempt.usedHint,
+          hint_count: attempt.hintCount,
+          response_time_ms: attempt.responseTimeMs,
+          retry_number: attempt.retryNumber,
           submitted_at: attempt.submittedAt,
         })),
       })
